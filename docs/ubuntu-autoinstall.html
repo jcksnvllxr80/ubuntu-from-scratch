@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ubuntu Autoinstall — Edge Deployment Guide</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e13; --surface: #111720; --surface2: #19222e; --border: #1f2d3d;
+    --accent: #e8624a; --accent2: #4a9eff; --accent3: #3ecf8e;
+    --text: #c9d5e0; --text-dim: #5a7a94; --text-bright: #eaf2f8;
+    --sidebar-w: 240px; --header-h: 56px;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body { background:var(--bg); color:var(--text); font-family:'JetBrains Mono',monospace; font-size:13px; line-height:1.7; display:flex; min-height:100vh; }
+
+  .sidebar { width:var(--sidebar-w); background:var(--surface); border-right:1px solid var(--border); position:fixed; top:0; left:0; height:100vh; display:flex; flex-direction:column; z-index:100; overflow-y:auto; }
+  .sidebar-logo { padding:20px 20px 16px; border-bottom:1px solid var(--border); }
+  .logo-badge { display:inline-flex; align-items:center; gap:8px; font-family:'Syne',sans-serif; font-weight:800; font-size:15px; color:var(--text-bright); }
+  .logo-dot { width:8px; height:8px; background:var(--accent); border-radius:50%; animation:pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.7)} }
+  .logo-sub { font-size:10px; color:var(--text-dim); margin-top:2px; letter-spacing:0.5px; }
+  .nav-section { padding:16px 12px 8px; }
+  .nav-label { font-size:9px; letter-spacing:2px; text-transform:uppercase; color:var(--text-dim); padding:0 8px; margin-bottom:6px; }
+  .nav-item { display:flex; align-items:center; gap:10px; padding:8px 10px; border-radius:6px; cursor:pointer; color:var(--text-dim); font-size:12px; font-weight:500; transition:all 0.15s; border:1px solid transparent; text-decoration:none; margin-bottom:2px; position:relative; }
+  .nav-item:hover { background:var(--surface2); color:var(--text); border-color:var(--border); }
+  .nav-item.active { background:rgba(232,98,74,0.1); color:var(--accent); border-color:rgba(232,98,74,0.25); }
+  .nav-item.active::before { content:''; position:absolute; left:0; top:50%; transform:translateY(-50%); width:2px; height:60%; background:var(--accent); border-radius:0 2px 2px 0; }
+  .nav-icon { font-size:14px; width:18px; text-align:center; flex-shrink:0; }
+  .sidebar-footer { margin-top:auto; padding:14px 16px; border-top:1px solid var(--border); font-size:10px; color:var(--text-dim); line-height:1.5; }
+
+  .main { margin-left:var(--sidebar-w); flex:1; min-height:100vh; }
+  .topbar { height:var(--header-h); border-bottom:1px solid var(--border); display:flex; align-items:center; padding:0 32px; gap:12px; position:sticky; top:0; background:rgba(10,14,19,0.95); backdrop-filter:blur(12px); z-index:50; }
+  .breadcrumb { display:flex; align-items:center; gap:6px; color:var(--text-dim); font-size:11px; }
+  .breadcrumb .crumb-active { color:var(--text-bright); }
+  .breadcrumb .sep { color:var(--border); }
+  .topbar-right { margin-left:auto; display:flex; align-items:center; gap:8px; }
+  .tag { display:inline-flex; align-items:center; font-size:10px; padding:3px 8px; border-radius:4px; border:1px solid; }
+  .tag-ubuntu { border-color:rgba(232,98,74,0.4); color:var(--accent); background:rgba(232,98,74,0.08); }
+  .tag-edge { border-color:rgba(74,158,255,0.4); color:var(--accent2); background:rgba(74,158,255,0.08); }
+  .tag-jammy { border-color:rgba(62,207,142,0.4); color:var(--accent3); background:rgba(62,207,142,0.08); }
+
+  .page { display:none; padding:36px 40px 60px; }
+  .page.active { display:block; animation:fadein 0.2s ease; }
+  @keyframes fadein { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+
+  .hero { margin-bottom:40px; }
+  .hero-eyebrow { font-size:10px; letter-spacing:3px; text-transform:uppercase; color:var(--accent); margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+  .hero-eyebrow::after { content:''; flex:1; max-width:60px; height:1px; background:var(--accent); opacity:0.4; }
+  .hero h1 { font-family:'Syne',sans-serif; font-size:36px; font-weight:800; color:var(--text-bright); line-height:1.1; letter-spacing:-1px; margin-bottom:14px; }
+  .hero h1 span { color:var(--accent); }
+  .hero-desc { font-size:13px; color:var(--text-dim); max-width:580px; line-height:1.8; }
+
+  .section-header { margin:40px 0 20px; display:flex; align-items:center; gap:12px; }
+  .section-header h2 { font-family:'Syne',sans-serif; font-weight:700; font-size:20px; color:var(--text-bright); }
+  .section-header .sh-line { flex:1; height:1px; background:var(--border); }
+  .section-header .sh-tag { font-size:10px; color:var(--text-dim); letter-spacing:1px; white-space:nowrap; }
+
+  /* Pipeline diagram */
+  .pipeline { display:grid; grid-template-columns:repeat(4,1fr); gap:2px; margin:24px 0; }
+  .pipeline-step { background:var(--surface); border:1px solid var(--border); padding:16px; position:relative; transition:border-color 0.2s; }
+  .pipeline-step:hover { border-color:var(--accent2); }
+  .pipeline-step::after { content:'→'; position:absolute; right:-12px; top:50%; transform:translateY(-50%); color:var(--border); font-size:14px; z-index:1; }
+  .pipeline-step:last-child::after { display:none; }
+  .ps-num { font-size:9px; color:var(--text-dim); letter-spacing:1px; margin-bottom:6px; }
+  .ps-title { font-family:'Syne',sans-serif; font-weight:700; font-size:13px; color:var(--text-bright); margin-bottom:4px; }
+  .ps-sub { font-size:10px; color:var(--text-dim); line-height:1.5; }
+  .ps-tbd { border-color:rgba(254,188,46,0.3); }
+  .ps-tbd .ps-title { color:#febc2e; }
+
+  .card-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:16px; margin:24px 0; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:20px; transition:all 0.2s; }
+  .card:hover { border-color:var(--accent2); transform:translateY(-2px); box-shadow:0 8px 24px rgba(0,0,0,0.3); }
+  .card-icon { font-size:22px; margin-bottom:10px; }
+  .card-title { font-family:'Syne',sans-serif; font-weight:700; font-size:14px; color:var(--text-bright); margin-bottom:6px; }
+  .card-desc { font-size:11px; color:var(--text-dim); line-height:1.7; }
+
+  .code-block { background:#080c10; border:1px solid var(--border); border-radius:8px; overflow:hidden; margin:14px 0; }
+  .code-header { display:flex; align-items:center; padding:8px 14px; border-bottom:1px solid var(--border); background:var(--surface); gap:8px; }
+  .code-dots { display:flex; gap:5px; }
+  .code-dot { width:8px; height:8px; border-radius:50%; }
+  .code-dot:nth-child(1){background:#ff5f57} .code-dot:nth-child(2){background:#febc2e} .code-dot:nth-child(3){background:#28c840}
+  .code-filename { font-size:11px; color:var(--text-dim); margin-left:4px; }
+  .code-copy { margin-left:auto; background:none; border:1px solid var(--border); color:var(--text-dim); font-family:'JetBrains Mono',monospace; font-size:10px; padding:3px 8px; border-radius:4px; cursor:pointer; transition:all 0.15s; }
+  .code-copy:hover { color:var(--text); border-color:var(--text-dim); }
+  .code-body { padding:16px; overflow-x:auto; }
+  .code-body pre { font-family:'JetBrains Mono',monospace; font-size:12px; line-height:1.75; color:var(--text); white-space:pre; }
+  .kw{color:#e06c75} .cm{color:#4a6274;font-style:italic} .str{color:#98c379} .num{color:#d19a66} .key{color:#61afef} .op{color:#c678dd} .fn{color:#e5c07b} .flag{color:var(--accent3)}
+
+  .data-table { width:100%; border-collapse:collapse; margin:16px 0; }
+  .data-table th { text-align:left; font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--text-dim); padding:8px 14px; border-bottom:1px solid var(--border); }
+  .data-table td { padding:10px 14px; border-bottom:1px solid rgba(31,45,61,0.5); font-size:12px; vertical-align:top; }
+  .data-table tr:hover td { background:var(--surface2); }
+  .col-name { color:var(--text-bright); font-weight:500; }
+  .col-sub { color:var(--text-dim); font-size:11px; margin-top:2px; }
+  .col-dim { color:var(--text-dim); }
+  .col-key { color:var(--accent2); font-weight:500; }
+  .col-warn { color:#febc2e; font-weight:500; }
+
+  .status-dot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; }
+  .s-req{background:var(--accent)} .s-opt{background:var(--text-dim)} .s-store{background:var(--accent2)} .s-tbd{background:#febc2e}
+
+  .callout { border-left:3px solid; padding:12px 16px; border-radius:0 6px 6px 0; margin:14px 0; font-size:12px; line-height:1.7; }
+  .callout-warn { border-color:#febc2e; background:rgba(254,188,46,0.06); color:#c9a730; }
+  .callout-info { border-color:var(--accent2); background:rgba(74,158,255,0.06); color:#7ab8f5; }
+  .callout-ok { border-color:var(--accent3); background:rgba(62,207,142,0.06); color:#5dd4a0; }
+  .callout-tbd { border-color:#febc2e; background:rgba(254,188,46,0.04); color:#c9a730; }
+  .callout strong { display:block; margin-bottom:3px; font-size:11px; letter-spacing:0.5px; }
+
+  .dir-tree { background:#080c10; border:1px solid var(--border); border-radius:8px; padding:18px 20px; font-size:12px; line-height:2; }
+  .dir-tree .dir{color:var(--accent2)} .dir-tree .file{color:var(--text)} .dir-tree .comment{color:var(--text-dim)}
+
+  .step-list { margin:16px 0; }
+  .step-item { display:flex; gap:16px; margin-bottom:28px; }
+  .step-num-wrap { flex-shrink:0; display:flex; flex-direction:column; align-items:center; }
+  .step-num { width:28px; height:28px; border-radius:50%; background:var(--surface2); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-family:'Syne',sans-serif; font-weight:700; font-size:12px; color:var(--accent); }
+  .step-line { width:1px; flex:1; background:var(--border); margin-top:6px; }
+  .step-content { flex:1; padding-top:4px; }
+  .step-title { font-family:'Syne',sans-serif; font-weight:700; font-size:14px; color:var(--text-bright); margin-bottom:6px; }
+  .step-desc { font-size:12px; color:var(--text-dim); line-height:1.7; margin-bottom:10px; }
+
+  .checklist { margin:16px 0; }
+  .check-item { display:flex; align-items:flex-start; gap:10px; padding:10px 0; border-bottom:1px solid rgba(31,45,61,0.5); }
+  .check-box { width:16px; height:16px; border:1px solid var(--accent3); border-radius:3px; flex-shrink:0; margin-top:1px; display:flex; align-items:center; justify-content:center; color:var(--accent3); font-size:10px; }
+  .check-label { font-size:12px; color:var(--text); }
+  .check-cmd { font-size:11px; color:var(--text-dim); margin-top:3px; }
+
+  ::-webkit-scrollbar{width:6px;height:6px} ::-webkit-scrollbar-track{background:transparent} ::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px} ::-webkit-scrollbar-thumb:hover{background:var(--text-dim)}
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-badge"><div class="logo-dot"></div>AUTOINSTALL</div>
+    <div class="logo-sub">Ubuntu Edge Deployment Guide</div>
+  </div>
+  <nav>
+    <div class="nav-section">
+      <div class="nav-label">Getting Started</div>
+      <a class="nav-item active" onclick="showPage('overview',this)"><span class="nav-icon">◈</span> Overview</a>
+      <a class="nav-item" onclick="showPage('prereqs',this)"><span class="nav-icon">⬡</span> Prerequisites</a>
+      <a class="nav-item" onclick="showPage('directory',this)"><span class="nav-icon">⊞</span> Directory Layout</a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Build the VM</div>
+      <a class="nav-item" onclick="showPage('userdata',this)"><span class="nav-icon">◧</span> user-data YAML</a>
+      <a class="nav-item" onclick="showPage('repo',this)"><span class="nav-icon">⬢</span> Package Repo</a>
+      <a class="nav-item" onclick="showPage('firstboot',this)"><span class="nav-icon">▷</span> First Boot</a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Golden Image</div>
+      <a class="nav-item" onclick="showPage('sysprep',this)"><span class="nav-icon">✦</span> Sysprep</a>
+      <a class="nav-item" onclick="showPage('compress',this)"><span class="nav-icon">⬇</span> Compress &amp; Store</a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Deploy</div>
+      <a class="nav-item" onclick="showPage('factory',this)"><span class="nav-icon">⚙</span> Factory Utility <span style="margin-left:auto;font-size:9px;color:#febc2e;border:1px solid rgba(254,188,46,0.4);padding:1px 5px;border-radius:3px;">TBD</span></a>
+      <a class="nav-item" onclick="showPage('nightly',this)"><span class="nav-icon">↻</span> Nightly apt</a>
+    </div>
+    <div class="nav-section">
+      <div class="nav-label">Reference</div>
+      <a class="nav-item" onclick="showPage('verify',this)"><span class="nav-icon">✓</span> Verify</a>
+      <a class="nav-item" onclick="showPage('nextsteps',this)"><span class="nav-icon">→</span> Next Steps</a>
+    </div>
+  </nav>
+  <div class="sidebar-footer">Ubuntu 22.04 LTS · Jammy<br>autoinstall v1 · edge deployment</div>
+</aside>
+
+<main class="main">
+  <div class="topbar">
+    <div class="breadcrumb">
+      <span>Ubuntu Autoinstall</span><span class="sep">/</span>
+      <span class="crumb-active" id="bc-active">Overview</span>
+    </div>
+    <div class="topbar-right">
+      <span class="tag tag-ubuntu">Ubuntu 22.04</span>
+      <span class="tag tag-edge">Edge Deploy</span>
+      <span class="tag tag-jammy">Jammy</span>
+    </div>
+  </div>
+
+  <!-- OVERVIEW -->
+  <div class="page active" id="page-overview">
+    <div class="hero">
+      <div class="hero-eyebrow">Full Pipeline</div>
+      <h1>Build once.<br><span>Deploy anywhere.</span></h1>
+      <p class="hero-desc">Autoinstall builds a golden VM. That VM is sysprep'd, compressed, and stored. A factory utility transfers and installs it directly onto target hardware. Customer packages arrive post-deployment via nightly apt.</p>
+    </div>
+
+    <div class="section-header"><h2>Pipeline</h2><div class="sh-line"></div></div>
+
+    <div class="pipeline">
+      <div class="pipeline-step">
+        <div class="ps-num">01 — VM BUILD</div>
+        <div class="ps-title">Autoinstall</div>
+        <div class="ps-sub">Unattended install on local VM. Pulls base packages. Runs firstboot.</div>
+      </div>
+      <div class="pipeline-step">
+        <div class="ps-num">02 — CLEAN</div>
+        <div class="ps-title">Sysprep</div>
+        <div class="ps-sub">Remove SSH host keys, machine-id, logs, cache. Shut down. Do not reboot.</div>
+      </div>
+      <div class="pipeline-step">
+        <div class="ps-num">03 — STORE</div>
+        <div class="ps-title">Compress</div>
+        <div class="ps-sub">qcow2 → raw → xz. Push to artifact store. Single versioned artifact.</div>
+      </div>
+      <div class="pipeline-step ps-tbd">
+        <div class="ps-num">04 — DEPLOY ⚠ TBD</div>
+        <div class="ps-title">Factory Utility</div>
+        <div class="ps-sub">Connects to target server. Transfers image. dd's to disk. Reboots.</div>
+      </div>
+    </div>
+
+    <div class="pipeline" style="margin-top:2px;">
+      <div class="pipeline-step">
+        <div class="ps-num">05 — LIVE</div>
+        <div class="ps-title">Server Up</div>
+        <div class="ps-sub">Boots into golden state. Network reaches artifact store.</div>
+      </div>
+      <div class="pipeline-step">
+        <div class="ps-num">06 — NIGHTLY</div>
+        <div class="ps-title">apt Update</div>
+        <div class="ps-sub">unattended-upgrades pulls customer packages from artifact store.</div>
+      </div>
+      <div class="pipeline-step">
+        <div class="ps-num">07 — AUTO</div>
+        <div class="ps-title">postinst</div>
+        <div class="ps-sub">Customer .deb postinst applies site-specific config automatically.</div>
+      </div>
+      <div class="pipeline-step" style="border-color:transparent;background:transparent;">
+      </div>
+    </div>
+
+    <div class="section-header"><h2>Key Principles</h2><div class="sh-line"></div></div>
+    <div class="card-grid">
+      <div class="card"><div class="card-icon">🖼</div><div class="card-title">One Golden Image</div><div class="card-desc">The same compressed image is deployed to all servers regardless of customer. No per-customer image builds.</div></div>
+      <div class="card"><div class="card-icon">🧩</div><div class="card-title">Variance in Packages</div><div class="card-desc">Customer-specific config lives entirely in <code>.deb</code> postinst scripts. The image itself is dumb.</div></div>
+      <div class="card"><div class="card-icon">🔁</div><div class="card-title">Nightly Delivery</div><div class="card-desc">Customer packages aren't on the image at deploy time. They arrive post-deployment via <code>unattended-upgrades</code>.</div></div>
+      <div class="card"><div class="card-icon">🧹</div><div class="card-title">Sysprep Before Compress</div><div class="card-desc">Every deployed server gets a unique machine-id and SSH host keys. Sysprep ensures the image doesn't carry build VM state.</div></div>
+    </div>
+  </div>
+
+  <!-- PREREQS -->
+  <div class="page" id="page-prereqs">
+    <div class="hero">
+      <div class="hero-eyebrow">Before You Begin</div>
+      <h1>Prerequisites</h1>
+      <p class="hero-desc">Build machine deps and artifact store requirements.</p>
+    </div>
+
+    <div class="section-header"><h2>Build Machine</h2><div class="sh-line"></div></div>
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">install deps</span><button class="code-copy" onclick="copyCode(this)">copy</button></div>
+      <div class="code-body"><pre><span class="fn">apt-get</span> install -y \
+  dpkg-dev \       <span class="cm"># generates Packages index</span>
+  apt-utils \      <span class="cm"># apt-ftparchive</span>
+  genisoimage \    <span class="cm"># builds cidata ISO</span>
+  awscli \         <span class="cm"># syncs to artifact store</span>
+  whois \          <span class="cm"># mkpasswd</span>
+  qemu-system \    <span class="cm"># runs the autoinstall VM</span>
+  curl</pre></div>
+    </div>
+
+    <div class="section-header"><h2>Artifact Store</h2><div class="sh-line"></div></div>
+    <p style="color:var(--text-dim);font-size:12px;margin-bottom:16px;">Hosts both the package repo and the compressed golden image. S3 or self-hosted (Nexus, nginx, etc.).</p>
+    <table class="data-table">
+      <thead><tr><th>Resource</th><th>Requirement</th><th>Type</th></tr></thead>
+      <tbody>
+        <tr><td class="col-name">Artifact store</td><td class="col-dim">Reachable from build machine and from deployed edge servers</td><td><span class="status-dot s-req"></span>Required</td></tr>
+        <tr><td class="col-name">Write credentials</td><td class="col-dim">For pushing packages and compressed image</td><td><span class="status-dot s-req"></span>Required</td></tr>
+        <tr><td class="col-name">Read credentials</td><td class="col-dim">Baked into image for unattended nightly apt</td><td><span class="status-dot s-store"></span>See Nightly apt</td></tr>
+      </tbody>
+    </table>
+
+    <div class="section-header"><h2>Your Assets</h2><div class="sh-line"></div></div>
+    <table class="data-table">
+      <thead><tr><th>Asset</th><th>Notes</th><th>Type</th></tr></thead>
+      <tbody>
+        <tr><td class="col-name">SSH public key</td><td class="col-dim"><code>ssh-keygen -t ed25519</code></td><td><span class="status-dot s-req"></span>Required</td></tr>
+        <tr><td class="col-name">Hashed password</td><td class="col-dim"><code>mkpasswd -m sha-512 yourpassword</code> → paste <code>$6$...</code> into user-data</td><td><span class="status-dot s-req"></span>Required</td></tr>
+        <tr><td class="col-name">Ubuntu 22.04 ISO</td><td class="col-dim"><code>ubuntu-22.04.3-live-server-amd64.iso</code></td><td><span class="status-dot s-req"></span>Required</td></tr>
+        <tr><td class="col-name">Base <code>.deb</code> packages</td><td class="col-dim">Standard tooling for all deployments</td><td><span class="status-dot s-opt"></span>If applicable</td></tr>
+      </tbody>
+    </table>
+    <div class="callout callout-warn"><strong>⚠ PASSWORD HASH</strong>Never put a plaintext password in user-data. The <code>$6$</code> prefix identifies SHA-512.</div>
+  </div>
+
+  <!-- DIRECTORY -->
+  <div class="page" id="page-directory">
+    <div class="hero">
+      <div class="hero-eyebrow">Project Structure</div>
+      <h1>Directory Layout</h1>
+      <p class="hero-desc">Full project tree. The repo folder syncs to your artifact store. Everything else feeds into the cidata ISO.</p>
+    </div>
+
+    <div class="dir-tree"><pre><span class="dir">ubuntu-custom/</span>
+├── <span class="dir">autoinstall/</span>                  <span class="comment"># burned into cidata ISO</span>
+│   ├── <span class="file">user-data</span>                 <span class="comment"># autoinstall YAML</span>
+│   └── <span class="file">meta-data</span>                 <span class="comment"># required, near-empty</span>
+│
+├── <span class="dir">firstboot/</span>                    <span class="comment"># copied into target by late-commands</span>
+│   ├── <span class="file">firstboot.sh</span>              <span class="comment"># one-shot: SSH harden, configure nightly apt</span>
+│   └── <span class="dir">services/</span>
+│       └── <span class="file">firstboot.service</span>     <span class="comment"># systemd unit — runs once, disables self</span>
+│
+├── <span class="dir">sysprep/</span>
+│   └── <span class="file">sysprep.sh</span>                <span class="comment"># cleans machine state before imaging</span>
+│
+├── <span class="dir">factory/</span>
+│   └── <span class="file">install.sh</span>                <span class="comment"># runs on target — dd image to disk, reboot</span>
+│
+└── <span class="dir">repo/</span>                         <span class="comment"># synced to artifact store, NOT in ISO</span>
+    ├── <span class="dir">dists/jammy/main/binary-amd64/</span>
+    │   ├── <span class="file">Packages</span>
+    │   └── <span class="file">Packages.gz</span>
+    └── <span class="dir">pool/main/base/</span>
+        └── <span class="file">base-tooling_1.0_amd64.deb</span></pre></div>
+
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">create skeleton</span><button class="code-copy" onclick="copyCode(this)">copy</button></div>
+      <div class="code-body"><pre><span class="fn">mkdir</span> -p ubuntu-custom/{autoinstall,firstboot/services,sysprep,factory}
+<span class="fn">mkdir</span> -p ubuntu-custom/repo/dists/jammy/main/binary-amd64
+<span class="fn">mkdir</span> -p ubuntu-custom/repo/pool/main/base
+<span class="fn">cd</span> ubuntu-custom</pre></div>
+    </div>
+  </div>
+
+  <!-- USER-DATA -->
+  <div class="page" id="page-userdata">
+    <div class="hero">
+      <div class="hero-eyebrow">Component 1</div>
+      <h1>user-data YAML</h1>
+      <p class="hero-desc">Drives the unattended install on the build VM. Identical for all deployments.</p>
+    </div>
+
+    <div class="section-header"><h2>Section Reference</h2><div class="sh-line"></div></div>
+    <table class="data-table">
+      <thead><tr><th>Section</th><th>What It Does</th></tr></thead>
+      <tbody>
+        <tr><td class="col-key">locale / keyboard</td><td class="col-dim">Base system locale and keymap</td></tr>
+        <tr><td class="col-key">network</td><td class="col-dim">DHCP on eth0 at install time</td></tr>
+        <tr><td class="col-key">storage</td><td class="col-dim">LVM layout — use <code>name: direct</code> to skip LVM</td></tr>
+        <tr><td class="col-key">identity</td><td class="col-dim">Baseline hostname, username, SHA-512 hashed password</td></tr>
+        <tr><td class="col-key">ssh</td><td class="col-dim">Installs openssh-server, injects pubkey, disables password auth</td></tr>
+        <tr><td class="col-key">packages</td><td class="col-dim">Minimal base — includes <code>unattended-upgrades</code> for nightly apt</td></tr>
+        <tr><td class="col-key">apt.sources</td><td class="col-dim">Points at internal artifact store — baked in at build time</td></tr>
+        <tr><td class="col-key">late-commands</td><td class="col-dim">Strips bloat, copies firstboot files, enables firstboot.service</td></tr>
+      </tbody>
+    </table>
+
+    <div class="section-header"><h2>Full YAML</h2><div class="sh-line"></div></div>
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">autoinstall/user-data</span><button class="code-copy" onclick="copyCode(this)">copy</button></div>
+      <div class="code-body"><pre><span class="cm">#cloud-config</span>
+<span class="key">autoinstall</span>:
+  <span class="key">version</span>: <span class="num">1</span>
+  <span class="key">locale</span>: <span class="str">en_US.UTF-8</span>
+  <span class="key">keyboard</span>:
+    <span class="key">layout</span>: <span class="str">us</span>
+
+  <span class="key">network</span>:
+    <span class="key">network</span>:
+      <span class="key">version</span>: <span class="num">2</span>
+      <span class="key">ethernets</span>:
+        <span class="key">eth0</span>:
+          <span class="key">dhcp4</span>: <span class="kw">true</span>
+
+  <span class="key">storage</span>:
+    <span class="key">layout</span>:
+      <span class="key">name</span>: <span class="str">lvm</span>
+
+  <span class="key">identity</span>:
+    <span class="key">hostname</span>: <span class="str">edge-server</span>
+    <span class="key">username</span>: <span class="str">admin</span>
+    <span class="key">password</span>: <span class="str">"$6$rounds=4096$salt$hash"</span>  <span class="cm"># mkpasswd -m sha-512</span>
+
+  <span class="key">ssh</span>:
+    <span class="key">install-server</span>: <span class="kw">true</span>
+    <span class="key">authorized-keys</span>:
+      - <span class="str">"ssh-ed25519 AAAA... your-key"</span>
+    <span class="key">allow-pw</span>: <span class="kw">false</span>
+
+  <span class="key">packages</span>:
+    - <span class="str">curl</span>
+    - <span class="str">wget</span>
+    - <span class="str">htop</span>
+    - <span class="str">ca-certificates</span>
+    - <span class="str">unattended-upgrades</span>
+
+  <span class="key">apt</span>:
+    <span class="key">sources</span>:
+      <span class="key">internal-pkg-store</span>:
+        <span class="key">source</span>: <span class="str">"deb [trusted=yes] https://your-artifact-store/repo jammy main"</span>
+
+  <span class="key">late-commands</span>:
+    - <span class="str">curtin in-target --target=/target -- systemctl disable snapd</span>
+    - <span class="str">curtin in-target --target=/target -- apt-get purge -y snapd ubuntu-advantage-tools</span>
+    - <span class="str">curtin in-target --target=/target -- apt-get autoremove -y</span>
+    - <span class="str">cp /cdrom/firstboot/firstboot.sh /target/usr/local/sbin/firstboot.sh</span>
+    - <span class="str">chmod +x /target/usr/local/sbin/firstboot.sh</span>
+    - <span class="str">cp /cdrom/firstboot/services/firstboot.service /target/etc/systemd/system/firstboot.service</span>
+    - <span class="str">curtin in-target --target=/target -- systemctl enable firstboot.service</span>
+
+  <span class="key">user-data</span>:
+    <span class="key">disable_root</span>: <span class="kw">true</span></pre></div>
+    </div>
+
+    <div class="section-header"><h2>meta-data</h2><div class="sh-line"></div></div>
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">autoinstall/meta-data</span><button class="code-copy" onclick="copyCode(this)">copy</button></div>
+      <div class="code-body"><pre><span class="key">instance-id</span>: <span class="str">edge-server-001</span></pre></div>
+    </div>
+  </div>
+
+  <!-- REPO -->
+  <div class="page" id="page-repo">
+    <div class="hero">
+      <div class="hero-eyebrow">Component 2</div>
+      <h1>Package Repo</h1>
+      <p class="hero-desc">Hosted on your artifact store. Serves base packages during build. Customer-specific packages published here are delivered post-deployment via nightly apt.</p>
+    </div>
+
+    <div class="section-header"><h2>Build and Publish</h2><div class="sh-line"></div></div>
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="code-copy" onclick="copyCode(this)">copy</button></div>
+      <div class="code-body"><pre><span class="fn">cp</span> base-tooling_1.0_amd64.deb repo/pool/main/base/
+
+<span class="fn">cd</span> ubuntu-custom/repo
+<span class="fn">dpkg-scanpackages</span> pool/main/ &gt; dists/jammy/main/binary-amd64/Packages
+<span class="fn">gzip</span> -k dists/jammy/main/binary-amd64/Packages
+
+<span class="fn">aws</span> s3 sync . s3://your-artifact-store/repo <span class="flag">--acl public-read</span>
+
+<span class="fn">curl</span> -I https://your-artifact-store/repo/dists/jammy/main/binary-amd64/Packages</pre></div>
+    </div>
+
+    <div class="section-header"><h2>Publishing a New Package</h2><div class="sh-line"></div></div>
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="code-copy" onclick="copyCode(this)">copy</button></div>
+      <div class="code-body"><pre><span class="fn">cp</span> yourpkg_1.1_amd64.deb repo/pool/main/base/
+<span class="fn">cd</span> ubuntu-custom/repo
+<span class="fn">dpkg-scanpackages</span> pool/main/ &gt; dists/jammy/main/binary-amd64/Packages
+<span class="fn">gzip</span> -k dists/jammy/main/binary-amd64/Packages
+<span class="fn">aws</span> s3 sync . s3://your-artifact-store/repo <span class="flag">--acl public-read</span></pre></div>
+    </div>
+    <div class="callout callout-ok"><strong>✓ NIGHTLY PICKUP</strong>All deployed servers pick up the new package on their next nightly unattended-upgrades run.</div>
+  </div>
+
+  <!-- FIRSTBOOT -->
+  <div class="page" id="page-firstboot">
+    <div class="hero">
+      <div class="hero-eyebrow">Component 3</div>
+      <h1>First Boot</h1>
+      <p class="hero-desc">Runs once on the build VM after autoinstall. Hardens SSH, installs base packages, configures nightly apt. Disables itself — never runs again.</p>
+    </div>
+
+    <div class="section-header"><h2>firstboot.sh</h2><div class="sh-line"></div></div>
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">firstboot/firstboot.sh</span><button class="code-copy" onclick="copyCode(this)">copy</button></div>
+      <div class="code-body"><pre><span class="op">#!/bin/bash</span>
+<span class="kw">set</span> -euo pipefail
+LOG=/var/log/firstboot.log
+<span class="kw">exec</span> > >(tee -a <span class="str">"$LOG"</span>) 2>&1
+
+<span class="fn">echo</span> <span class="str">"[firstboot] Starting $(date)"</span>
+
+<span class="cm"># ── Install base packages ─────────────────────────────────────</span>
+<span class="fn">apt-get</span> update -qq
+<span class="fn">apt-get</span> install -y base-tooling
+
+<span class="cm"># ── Harden SSH ────────────────────────────────────────────────</span>
+<span class="fn">sed</span> -i <span class="str">'s/#PermitRootLogin.*/PermitRootLogin no/'</span> /etc/ssh/sshd_config
+<span class="fn">sed</span> -i <span class="str">'s/#PasswordAuthentication.*/PasswordAuthentication no/'</span> /etc/ssh/sshd_config
+<span class="fn">systemctl</span> restart sshd
+
+<span class="cm"># ── Configure unattended-upgrades ────────────────────────────</span>
+<span class="kw">cat</span> > /etc/apt/apt.conf.d/50unattended-upgrades &lt;&lt;EOF
+Unattended-Upgrade::Allowed-Origins {
+    <span class="str">"your-artifact-store:jammy"</span>;
+};
+Unattended-Upgrade::Automatic-Reboot <span class="str">"false"</span>;
+EOF
+
+<span class="kw">cat</span> > /etc/apt/apt.conf.d/20auto-upgrades &lt;&lt;EOF
+APT::Periodic::Update-Package-Lists <span class="str">"1"</span>;
+APT::Periodic::Unattended-Upgrade <span class="str">"1"</span>;
+EOF
+
+<span class="fn">systemctl</span> enable unattended-upgrades
+<span class="fn">systemctl</span> start unattended-upgrades
+
+<span class="cm"># ── Disable self ───────────────────────────────────────────────</span>
+<span class="fn">systemctl</span> disable firstboot.service
+
+<span class="fn">echo</span> <span class="str">"[firstboot] Done $(date)"</span></pre></div>
+    </div>
+
+    <div class="section-header"><h2>firstboot.service</h2><div class="sh-line"></div></div>
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">firstboot/services/firstboot.service</span><button class="code-copy" onclick="copyCode(this)">copy</button></div>
+      <div class="code-body"><pre>[<span class="key">Unit</span>]
+<span class="key">Description</span>=<span class="str">First boot provisioning</span>
+<span class="key">After</span>=<span class="str">network-online.target</span>
+<span class="key">Wants</span>=<span class="str">network-online.target</span>
+<span class="key">ConditionPathExists</span>=<span class="str">/usr/local/sbin/firstboot.sh</span>
+
+[<span class="key">Service</span>]
+<span class="key">Type</span>=<span class="str">oneshot</span>
+<span class="key">ExecStart</span>=<span class="str">/usr/local/sbin/firstboot.sh</span>
+<span class="key">RemainAfterExit</span>=<span class="str">yes</span>
+<span class="key">StandardOutput</span>=<span class="str">journal+console</span>
+
+[<span class="key">Install</span>]
+<span class="key">WantedBy</span>=<span class="str">multi-user.target</span></pre></div>
+    </div>
+  </div>
+
+  <!-- SYSPREP -->
+  <div class="page" id="page-sysprep">
+    <div class="hero">
+      <div class="hero-eyebrow">Golden Image Step 1</div>
+      <h1>Sysprep</h1>
+      <p class="hero-desc">After firstboot completes, clean all machine-specific state before imaging. Every deployed server must come up with its own unique identity.</p>
+    </div>
+
+    <div class="callout callout-warn">
+      <strong>⚠ CRITICAL — SHUT DOWN AFTER SYSPREP, DO NOT REBOOT</strong>
+      Rebooting after sysprep regenerates the state you just cleaned. Run sysprep, shut down immediately, then image the disk.
+    </div>
+
+    <div class="section-header"><h2>sysprep.sh</h2><div class="sh-line"></div></div>
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">sysprep/sysprep.sh — run inside VM before shutdown</span><button class="code-copy" onclick="copyCode(this)">copy</button></div>
+      <div class="code-body"><pre><span class="op">#!/bin/bash</span>
+<span class="kw">set</span> -euo pipefail
+
+<span class="fn">echo</span> <span class="str">"[sysprep] Starting $(date)"</span>
+
+<span class="cm"># ── SSH host keys — regenerated on first boot ─────────────────</span>
+<span class="fn">rm</span> -f /etc/ssh/ssh_host_*
+
+<span class="cm"># ── machine-id — must be unique per deployment ────────────────</span>
+<span class="fn">truncate</span> -s 0 /etc/machine-id
+<span class="fn">rm</span> -f /var/lib/dbus/machine-id
+<span class="fn">ln</span> -s /etc/machine-id /var/lib/dbus/machine-id
+
+<span class="cm"># ── Logs ──────────────────────────────────────────────────────</span>
+<span class="fn">find</span> /var/log -type f -exec truncate -s 0 {} \;
+
+<span class="cm"># ── apt cache ─────────────────────────────────────────────────</span>
+<span class="fn">apt-get</span> clean
+
+<span class="cm"># ── Shell history ─────────────────────────────────────────────</span>
+<span class="kw">unset</span> HISTFILE
+<span class="fn">rm</span> -f /root/.bash_history /home/*/.bash_history
+
+<span class="cm"># ── Temp files ────────────────────────────────────────────────</span>
+<span class="fn">rm</span> -rf /tmp/* /var/tmp/*
+
+<span class="fn">echo</span> <span class="str">"[sysprep] Done — shut down now, do not reboot"</span></pre></div>
+    </div>
+
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">run sysprep then shut down immediately</span><button class="code-copy" onclick="copyCode(this)">copy</button></div>
+      <div class="code-body"><pre><span class="fn">sudo bash</span> sysprep.sh && <span class="fn">sudo shutdown</span> -h now</pre></div>
+    </div>
+
+    <div class="section-header"><h2>What Regenerates on First Boot</h2><div class="sh-line"></div></div>
+    <table class="data-table">
+      <thead><tr><th>Item Cleaned</th><th>What Regenerates It on Deployed Server</th></tr></thead>
+      <tbody>
+        <tr><td class="col-key">SSH host keys</td><td class="col-dim">Regenerated automatically by <code>ssh</code> service on first boot</td></tr>
+        <tr><td class="col-key">machine-id</td><td class="col-dim">Regenerated automatically by <code>systemd-machine-id-setup</code></td></tr>
+        <tr><td class="col-key">Logs / cache / tmp</td><td class="col-dim">Rebuilt organically as services start</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- COMPRESS -->
+  <div class="page" id="page-compress">
+    <div class="hero">
+      <div class="hero-eyebrow">Golden Image Step 2</div>
+      <h1>Compress &amp; Store</h1>
+      <p class="hero-desc">Convert the sysprep'd VM disk to a raw image, compress it, and push to your artifact store. This is the deployable artifact.</p>
+    </div>
+
+    <div class="section-header"><h2>Convert, Compress, Push</h2><div class="sh-line"></div></div>
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">bash</span><button class="code-copy" onclick="copyCode(this)">copy</button></div>
+      <div class="code-body"><pre><span class="cm"># 1. Convert qcow2 → raw</span>
+<span class="fn">qemu-img</span> convert -f qcow2 -O raw disk.img disk.raw
+
+<span class="cm"># 2. Compress</span>
+<span class="fn">xz</span> -T 0 -v disk.raw       <span class="cm"># produces disk.raw.xz — best ratio, uses all CPU threads</span>
+<span class="cm"># or faster:</span>
+<span class="fn">gzip</span> -v disk.raw           <span class="cm"># produces disk.raw.gz</span>
+
+<span class="cm"># 3. Push to artifact store</span>
+<span class="fn">aws</span> s3 cp disk.raw.xz s3://your-artifact-store/images/edge-server-latest.raw.xz
+
+<span class="cm"># 4. Verify</span>
+<span class="fn">aws</span> s3 ls s3://your-artifact-store/images/</pre></div>
+    </div>
+
+    <div class="callout callout-info">
+      <strong>ℹ COMPRESSION RATIO</strong>
+      A typical minimal Ubuntu server image (~2-4 GB raw) compresses to ~500 MB–1 GB with xz.
+      <code>xz -T 0</code> uses all available CPU threads — use on the build machine, not on constrained hardware.
+    </div>
+  </div>
+
+  <!-- FACTORY -->
+  <div class="page" id="page-factory">
+    <div class="hero">
+      <div class="hero-eyebrow">Deploy</div>
+      <h1>Factory Utility <span style="font-size:16px;color:#febc2e;vertical-align:middle;margin-left:8px;">⚠ TBD</span></h1>
+      <p class="hero-desc">Connects to the target server, transfers the compressed image and install script, and executes the install remotely. Approach is defined — implementation details are not yet finalised.</p>
+    </div>
+
+    <div class="callout callout-tbd">
+      <strong>⚠ TBD — OPEN QUESTIONS BELOW</strong>
+      The flow and scripts below represent the confirmed approach. Items marked TBD require decisions before implementation.
+    </div>
+
+    <div class="section-header"><h2>Confirmed Flow</h2><div class="sh-line"></div></div>
+
+    <div class="step-list">
+      <div class="step-item">
+        <div class="step-num-wrap"><div class="step-num">1</div><div class="step-line"></div></div>
+        <div class="step-content">
+          <div class="step-title">Factory workstation connects to target server</div>
+          <div class="step-desc">Target server is running some OS that accepts SSH. Factory workstation SSHs in.</div>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num-wrap"><div class="step-num">2</div><div class="step-line"></div></div>
+        <div class="step-content">
+          <div class="step-title">Transfer compressed image + install script</div>
+          <div class="step-desc">SCP or rsync from workstation to target. install.sh and the compressed image land on the target.</div>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num-wrap"><div class="step-num">3</div><div class="step-line"></div></div>
+        <div class="step-content">
+          <div class="step-title">Execute install.sh remotely over SSH</div>
+          <div class="step-desc">Workstation triggers install.sh on the target. Script runs: decompress → dd to disk → reboot.</div>
+        </div>
+      </div>
+      <div class="step-item">
+        <div class="step-num-wrap"><div class="step-num">4</div></div>
+        <div class="step-content">
+          <div class="step-title">Server reboots into golden state</div>
+          <div class="step-desc">Server comes up from the installed image. Network reaches artifact store. Nightly apt takes over from here.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-header"><h2>install.sh — runs on target server</h2><div class="sh-line"></div></div>
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">factory/install.sh</span><button class="code-copy" onclick="copyCode(this)">copy</button></div>
+      <div class="code-body"><pre><span class="op">#!/bin/bash</span>
+<span class="kw">set</span> -euo pipefail
+
+IMAGE_URL=<span class="str">"https://your-artifact-store/images/edge-server-latest.raw.xz"</span>
+TARGET_DISK=<span class="str">"/dev/sda"</span>       <span class="cm"># ⚠ TBD — confirm per hardware platform</span>
+
+<span class="fn">echo</span> <span class="str">"[install] Downloading image..."</span>
+<span class="fn">curl</span> -fSL <span class="str">"$IMAGE_URL"</span> -o /tmp/image.raw.xz
+
+<span class="fn">echo</span> <span class="str">"[install] Writing to $TARGET_DISK..."</span>
+<span class="fn">xz</span> -dc /tmp/image.raw.xz | <span class="fn">dd</span> of=<span class="str">"$TARGET_DISK"</span> bs=4M status=progress conv=fsync
+
+<span class="fn">echo</span> <span class="str">"[install] Rebooting..."</span>
+<span class="fn">reboot</span></pre></div>
+    </div>
+
+    <div class="section-header"><h2>Factory Workstation Script</h2><div class="sh-line"></div></div>
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">factory-provision.sh — runs on workstation</span><button class="code-copy" onclick="copyCode(this)">copy</button></div>
+      <div class="code-body"><pre><span class="op">#!/bin/bash</span>
+TARGET_HOST=<span class="str">"$1"</span>              <span class="cm"># e.g. 192.168.1.50</span>
+SSH_KEY=<span class="str">"~/.ssh/factory-key"</span>
+
+<span class="fn">echo</span> <span class="str">"[factory] Transferring install script..."</span>
+<span class="fn">scp</span> -i <span class="str">"$SSH_KEY"</span> factory/install.sh admin@<span class="str">"$TARGET_HOST"</span>:/tmp/install.sh
+
+<span class="fn">echo</span> <span class="str">"[factory] Executing install..."</span>
+<span class="fn">ssh</span> -i <span class="str">"$SSH_KEY"</span> admin@<span class="str">"$TARGET_HOST"</span> <span class="str">"sudo bash /tmp/install.sh"</span></pre></div>
+    </div>
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">usage</span><button class="code-copy" onclick="copyCode(this)">copy</button></div>
+      <div class="code-body"><pre><span class="fn">bash</span> factory-provision.sh 192.168.1.50</pre></div>
+    </div>
+
+    <div class="section-header"><h2>Open Questions</h2><div class="sh-line"></div><span class="sh-tag">DECISIONS NEEDED</span></div>
+    <table class="data-table">
+      <thead><tr><th>#</th><th>Question</th><th>Impact</th></tr></thead>
+      <tbody>
+        <tr><td class="col-warn">1</td><td class="col-name">What OS is running on the target when the utility connects?</td><td class="col-dim">Determines what environment install.sh runs in</td></tr>
+        <tr><td class="col-warn">2</td><td class="col-name">How does the target boot into that environment?</td><td class="col-dim">USB live Linux, PXE, vendor factory OS, iDRAC?</td></tr>
+        <tr><td class="col-warn">3</td><td class="col-name">Is the target disk always the same device path?</td><td class="col-dim">Affects <code>TARGET_DISK</code> in install.sh — may need auto-detection</td></tr>
+        <tr><td class="col-warn">4</td><td class="col-name">Should the workstation utility be a shell script, Python tool, or something more formal?</td><td class="col-dim">Affects how it's distributed and maintained</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- NIGHTLY -->
+  <div class="page" id="page-nightly">
+    <div class="hero">
+      <div class="hero-eyebrow">Post-Deployment</div>
+      <h1>Nightly apt Updates</h1>
+      <p class="hero-desc">The delivery mechanism for customer-specific packages. Configured by firstboot. No manual intervention once the server is live.</p>
+    </div>
+
+    <div class="section-header"><h2>Flow</h2><div class="sh-line"></div></div>
+    <div style="display:flex;align-items:center;gap:0;flex-wrap:wrap;margin:24px 0;">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px;min-width:140px;"><div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">PUBLISH</div><div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text-bright);font-size:13px;">New .deb</div><div style="font-size:10px;color:var(--text-dim);">pushed to artifact store</div></div>
+      <div style="color:var(--border);padding:0 8px;font-size:18px;">→</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px;min-width:140px;"><div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">NIGHTLY</div><div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text-bright);font-size:13px;">apt run</div><div style="font-size:10px;color:var(--text-dim);">unattended-upgrades</div></div>
+      <div style="color:var(--border);padding:0 8px;font-size:18px;">→</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px;min-width:140px;"><div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">AUTO</div><div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text-bright);font-size:13px;">Install</div><div style="font-size:10px;color:var(--text-dim);">package installed</div></div>
+      <div style="color:var(--border);padding:0 8px;font-size:18px;">→</div>
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:14px 16px;min-width:140px;"><div style="font-size:9px;color:var(--text-dim);margin-bottom:4px;">AUTO</div><div style="font-family:'Syne',sans-serif;font-weight:700;color:var(--text-bright);font-size:13px;">postinst</div><div style="font-size:10px;color:var(--text-dim);">customer config applied</div></div>
+    </div>
+
+    <div class="section-header"><h2>Manual Trigger</h2><div class="sh-line"></div></div>
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="code-copy" onclick="copyCode(this)">copy</button></div>
+      <div class="code-body"><pre><span class="fn">unattended-upgrade</span> --debug
+<span class="cm"># or force a full apt run</span>
+<span class="fn">apt-get</span> update && <span class="fn">apt-get</span> upgrade -y</pre></div>
+    </div>
+
+    <div class="section-header"><h2>Check Last Run</h2><div class="sh-line"></div></div>
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><button class="code-copy" onclick="copyCode(this)">copy</button></div>
+      <div class="code-body"><pre><span class="fn">tail</span> -30 /var/log/unattended-upgrades/unattended-upgrades.log</pre></div>
+    </div>
+
+    <div class="callout callout-warn"><strong>⚠ AUTOMATIC-REBOOT IS OFF</strong>Handle reboots in postinst or via fleet management if customer packages require them.</div>
+  </div>
+
+  <!-- VERIFY -->
+  <div class="page" id="page-verify">
+    <div class="hero">
+      <div class="hero-eyebrow">Post-Install</div>
+      <h1>Verify</h1>
+      <p class="hero-desc">Three verification points: VM build, deployed server first boot, and after the first nightly apt run.</p>
+    </div>
+
+    <div class="section-header"><h2>VM Build — after firstboot completes</h2><div class="sh-line"></div></div>
+    <div class="checklist">
+      <div class="check-item"><div class="check-box">✓</div><div><div class="check-label">firstboot ran and is disabled</div><div class="check-cmd">systemctl status firstboot.service &amp;&amp; systemctl is-enabled firstboot.service  # expect: disabled</div></div></div>
+      <div class="check-item"><div class="check-box">✓</div><div><div class="check-label">firstboot log is clean</div><div class="check-cmd">cat /var/log/firstboot.log</div></div></div>
+      <div class="check-item"><div class="check-box">✓</div><div><div class="check-label">SSH hardening applied</div><div class="check-cmd">grep -E "PermitRootLogin|PasswordAuthentication" /etc/ssh/sshd_config</div></div></div>
+      <div class="check-item"><div class="check-box">✓</div><div><div class="check-label">Bloat removed</div><div class="check-cmd">dpkg -l snapd 2>&1 | grep -E "^ii|not installed"</div></div></div>
+      <div class="check-item"><div class="check-box">✓</div><div><div class="check-label">Base package installed</div><div class="check-cmd">dpkg -l base-tooling</div></div></div>
+      <div class="check-item"><div class="check-box">✓</div><div><div class="check-label">Artifact store reachable</div><div class="check-cmd">apt-get update</div></div></div>
+      <div class="check-item"><div class="check-box">✓</div><div><div class="check-label">unattended-upgrades running</div><div class="check-cmd">systemctl status unattended-upgrades</div></div></div>
+    </div>
+
+    <div class="section-header"><h2>Deployed Server — first boot after factory install</h2><div class="sh-line"></div></div>
+    <div class="checklist">
+      <div class="check-item"><div class="check-box">✓</div><div><div class="check-label">machine-id is unique (not blank, not matching build VM)</div><div class="check-cmd">cat /etc/machine-id</div></div></div>
+      <div class="check-item"><div class="check-box">✓</div><div><div class="check-label">SSH host keys were regenerated</div><div class="check-cmd">ls -la /etc/ssh/ssh_host_*</div></div></div>
+      <div class="check-item"><div class="check-box">✓</div><div><div class="check-label">Network reaches artifact store</div><div class="check-cmd">apt-get update</div></div></div>
+      <div class="check-item"><div class="check-box">✓</div><div><div class="check-label">unattended-upgrades running</div><div class="check-cmd">systemctl status unattended-upgrades</div></div></div>
+    </div>
+
+    <div class="section-header"><h2>After First Nightly apt Run</h2><div class="sh-line"></div></div>
+    <div class="checklist">
+      <div class="check-item"><div class="check-box">✓</div><div><div class="check-label">Customer package installed</div><div class="check-cmd">dpkg -l customer-pkg-name</div></div></div>
+      <div class="check-item"><div class="check-box">✓</div><div><div class="check-label">Last nightly run was clean</div><div class="check-cmd">tail -30 /var/log/unattended-upgrades/unattended-upgrades.log</div></div></div>
+    </div>
+  </div>
+
+  <!-- NEXT STEPS -->
+  <div class="page" id="page-nextsteps">
+    <div class="hero">
+      <div class="hero-eyebrow">Where To Go From Here</div>
+      <h1>Next Steps</h1>
+      <p class="hero-desc">Logical extensions and open items.</p>
+    </div>
+
+    <div class="card-grid">
+      <div class="card"><div class="card-icon">⚙</div><div class="card-title">Factory Utility</div><div class="card-desc">Resolve open questions and implement. Decide: shell script, Python tool, or more formal provisioning framework. See Factory Utility page for the question list.</div></div>
+      <div class="card"><div class="card-icon">💾</div><div class="card-title">Target Disk Detection</div><div class="card-desc"><code>install.sh</code> hardcodes <code>/dev/sda</code>. If hardware varies, add auto-detection logic — e.g. find the largest non-USB block device.</div></div>
+      <div class="card"><div class="card-icon">🔐</div><div class="card-title">GPG-sign the Repo</div><div class="card-desc">Replace <code>trusted=yes</code> with a proper GPG signature. Use <code>reprepro</code> for signing, indexing, and versioning.</div></div>
+      <div class="card"><div class="card-icon">🧩</div><div class="card-title">Customer .deb postinst</div><div class="card-desc">All customer-specific setup runs here — hostname, service config, hardware interface params. Triggered automatically on install and upgrade.</div></div>
+      <div class="card"><div class="card-icon">🔑</div><div class="card-title">Repo Auth</div><div class="card-desc">Bake a read-only credential or client cert into the image for unattended apt auth against a private store.</div></div>
+      <div class="card"><div class="card-icon">🔁</div><div class="card-title">Reboot Policy</div><div class="card-desc">Define a maintenance window in <code>unattended-upgrades</code> or handle required reboots in postinst.</div></div>
+    </div>
+
+    <div class="section-header"><h2>Customer .deb postinst Pattern</h2><div class="sh-line"></div></div>
+    <div class="code-block">
+      <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><span class="code-filename">DEBIAN/postinst</span><button class="code-copy" onclick="copyCode(this)">copy</button></div>
+      <div class="code-body"><pre><span class="op">#!/bin/bash</span>
+<span class="kw">set</span> -e
+
+<span class="fn">hostnamectl</span> set-hostname <span class="str">"customer-site-name"</span>
+<span class="fn">cp</span> /usr/share/customer-pkg/config/service.conf /etc/myapp/service.conf
+<span class="fn">systemctl</span> enable myapp.service
+<span class="fn">systemctl</span> restart myapp.service</pre></div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+  function showPage(id, el) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById('page-' + id).classList.add('active');
+    el.classList.add('active');
+    document.getElementById('bc-active').textContent = el.querySelector('.nav-icon').nextSibling.textContent.trim();
+  }
+
+  function copyCode(btn) {
+    const pre = btn.closest('.code-block').querySelector('pre');
+    navigator.clipboard.writeText(pre.innerText).then(() => {
+      btn.textContent = 'copied!';
+      setTimeout(() => btn.textContent = 'copy', 1500);
+    });
+  }
+</script>
+</body>
+</html>

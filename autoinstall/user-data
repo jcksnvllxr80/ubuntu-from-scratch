@@ -1,0 +1,118 @@
+#cloud-config
+# =====================================================================
+# Ubuntu 26.04 autoinstall — minimal server, no desktop
+# Target: VirtualBox VM, unattended install, runs firstboot on first boot.
+# build.sh substitutes __PASSWORD_HASH__ before burning the cidata ISO.
+# =====================================================================
+autoinstall:
+  version: 1
+
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+
+  # ---- Network: DHCP on whatever ethernet VirtualBox presents -------
+  network:
+    version: 2
+    ethernets:
+      any:
+        match:
+          name: "en*"
+        dhcp4: true
+
+  # ---- Storage: direct layout, no LVM (simplest) --------------------
+  storage:
+    layout:
+      name: direct
+
+  # ---- Identity: default user is 'ubuntu' / password 'ubuntu' -------
+  # Regenerate hash with: openssl passwd -6 yourpass    (build.sh does this)
+  identity:
+    hostname: ubuntu-minimal
+    username: ubuntu
+    password: "__PASSWORD_HASH__"
+
+  # ---- SSH: install server, allow password for first verification ---
+  ssh:
+    install-server: true
+    allow-pw: true
+    authorized-keys: []
+    # To lock down to keys only, set allow-pw: false and list your pubkey:
+    # authorized-keys:
+    #   - "ssh-ed25519 AAAA... your-key"
+
+  # ---- Packages -----------------------------------------------------
+  packages:
+    - openssh-server
+    - curl
+    - wget
+    - htop
+    - vim
+    - ca-certificates
+
+    # =================================================================
+    # DESKTOP PACKAGES — uncomment to add a GUI
+    # =================================================================
+    # - ubuntu-desktop-minimal    # minimal GNOME desktop
+    # - firefox                   # web browser
+    # - xorg                      # X server (included by ubuntu-desktop*)
+    # - gdm3                      # display manager (login screen)
+    # =================================================================
+    # END DESKTOP PACKAGES
+    # =================================================================
+
+  # ---- Strip bloat during install -----------------------------------
+  late-commands:
+    - curtin in-target --target=/target -- apt-get purge -y snapd ubuntu-advantage-tools || true
+    - curtin in-target --target=/target -- apt-get autoremove -y
+
+  # ---- Cloud-init user-data for the *installed* system --------------
+  # This runs on the very first boot of the new system. It drops a
+  # firstboot.sh + firstboot.service onto disk and triggers the unit.
+  user-data:
+    disable_root: true
+
+    write_files:
+      - path: /usr/local/sbin/firstboot.sh
+        permissions: '0755'
+        content: |
+          #!/bin/bash
+          set -euo pipefail
+          LOG=/var/log/firstboot.log
+          exec > >(tee -a "$LOG") 2>&1
+
+          echo "[firstboot] starting $(date -Iseconds)"
+          echo "[firstboot] hostname=$(hostname)  kernel=$(uname -r)"
+
+          # Prove we ran by dropping a marker the service can check.
+          echo "firstboot completed at $(date -Iseconds)" > /etc/firstboot-complete
+
+          # ---- DESKTOP-ONLY FIRSTBOOT STEPS ---------------------------
+          # If you add a desktop, you may want to enable gdm3 here:
+          # systemctl enable gdm3
+          # ---- END DESKTOP-ONLY --------------------------------------
+
+          echo "[firstboot] done $(date -Iseconds)"
+          systemctl disable firstboot.service
+
+      - path: /etc/systemd/system/firstboot.service
+        content: |
+          [Unit]
+          Description=First boot provisioning
+          After=network-online.target
+          Wants=network-online.target
+          ConditionPathExists=/usr/local/sbin/firstboot.sh
+          ConditionPathExists=!/etc/firstboot-complete
+
+          [Service]
+          Type=oneshot
+          ExecStart=/usr/local/sbin/firstboot.sh
+          RemainAfterExit=yes
+          StandardOutput=journal+console
+
+          [Install]
+          WantedBy=multi-user.target
+
+    runcmd:
+      - [ systemctl, daemon-reload ]
+      - [ systemctl, enable, "--now", firstboot.service ]
