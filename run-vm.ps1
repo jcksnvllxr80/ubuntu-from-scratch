@@ -80,7 +80,7 @@ Invoke-VBox modifyvm $VmName `
 
 Invoke-VBox createmedium disk --filename $DiskPath --size $DiskSizeMb --format VDI
 
-Invoke-VBox storagectl   $VmName --name SATA --add sata --controller IntelAhci
+Invoke-VBox storagectl   $VmName --name SATA --add sata --controller IntelAhci --portcount 1
 Invoke-VBox storageattach $VmName --storagectl SATA --port 0 --device 0 --type hdd --medium $DiskPath
 
 Invoke-VBox storagectl   $VmName --name IDE --add ide

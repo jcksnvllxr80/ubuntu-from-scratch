@@ -115,7 +115,7 @@ Unblock-File .\build.ps1, .\run-vm.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File .\build.ps1
 # or: $env:PASSWORD='mypass'; .\build.ps1
 
-# 2. Point at the Ubuntu ISO and boot the VM
+# 2. Point at the Ubuntu live-server ISO you downloaded above and boot the VM
 $env:UBUNTU_ISO = 'C:\iso\ubuntu-26.04-live-server-amd64.iso'
 powershell -NoProfile -ExecutionPolicy Bypass -File .\run-vm.ps1
 ```
@@ -176,7 +176,8 @@ a dependency of Ubuntu Server, purge it in `late-commands:` (`snapd` already is)
 ### Install from a third-party apt repo
 
 Add the repo + key under `apt:` in `autoinstall/user-data` and then list the
-package in `packages:`:
+package in `packages:`. Docker CE is used here as an example — the same pattern
+works for any third-party apt repo:
 
 ```yaml
   apt:
@@ -374,6 +375,21 @@ Nothing outside `build/` and the VirtualBox VM registry is touched.
 | SSH "connection refused" on 2222 | VM still installing, or firstboot not done | wait, then `VBoxManage showvminfo $VM_NAME` |
 | `firstboot-complete` missing after boot | `firstboot.service` failed | `ssh` in, `journalctl -u firstboot.service` |
 | PowerShell: script refuses to run | execution policy | run with `-ExecutionPolicy Bypass` or `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
+
+### Verbose installer logging
+
+If the install appears stuck on a step (e.g. "installing kernel") and you want
+to see what it's actually doing, switch to a shell on the live installer system
+without interrupting the install:
+
+1. Press **Right Ctrl + F2** in the VirtualBox window to open a shell.
+2. Tail the installer's debug log:
+   ```bash
+   tail -f /var/log/subiquity/server-debug.log
+   ```
+   This shows exactly what subiquity is waiting on — a network request, a
+   package download, a disk write, etc.
+3. Press **Right Ctrl + F1** to switch back to the installer console.
 
 ---
 

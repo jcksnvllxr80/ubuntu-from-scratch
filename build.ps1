@@ -33,23 +33,11 @@ function Get-CryptHash {
   param([string]$Plain)
 
   $openssl = Get-Command openssl.exe -ErrorAction SilentlyContinue
-  if ($openssl) {
-    return (& $openssl.Path passwd -6 $Plain).Trim()
+  if (-not $openssl) {
+    throw "OpenSSL not found. Install with: winget install ShiningLight.OpenSSL"
   }
 
-  $python = Get-Command python.exe  -ErrorAction SilentlyContinue
-  if (-not $python) { $python = Get-Command python3.exe -ErrorAction SilentlyContinue }
-  if ($python) {
-    $code = 'import crypt,sys; print(crypt.crypt(sys.argv[1], crypt.mksalt(crypt.METHOD_SHA512)))'
-    return (& $python.Path -c $code $Plain).Trim()
-  }
-
-  throw @"
-Need openssl.exe or python.exe on PATH to hash the password.
-  Git for Windows ships openssl:  winget install Git.Git
-  Or install OpenSSL directly:    winget install ShiningLight.OpenSSL
-  Or install Python:              winget install Python.Python.3
-"@
+  return (& $openssl.Path passwd -6 $Plain).Trim()
 }
 
 $PasswordHash = Get-CryptHash -Plain $Password

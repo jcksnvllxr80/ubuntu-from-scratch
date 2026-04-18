@@ -71,7 +71,7 @@ rm -f "$DISK_PATH"
   --filename "$(towin "$DISK_PATH")" \
   --size "$DISK_SIZE_MB" --format VDI
 
-"${VBOX[@]}" storagectl "$VM_NAME" --name SATA --add sata --controller IntelAhci
+"${VBOX[@]}" storagectl "$VM_NAME" --name SATA --add sata --controller IntelAhci --portcount 1
 "${VBOX[@]}" storageattach "$VM_NAME" --storagectl SATA --port 0 --device 0 \
   --type hdd --medium "$(towin "$DISK_PATH")"
 
