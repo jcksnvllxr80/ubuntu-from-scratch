@@ -9,6 +9,7 @@ linux-generic
 grub-efi-amd64
 shim-signed
 systemd-sysv
+systemd-resolved
 netplan.io
 sudo
 openssh-server

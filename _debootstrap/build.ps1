@@ -36,38 +36,70 @@ See README.md for full prerequisites.
 
 $Here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
-$distroArg = @()
-if ($Distro) { $distroArg = @('-d', $Distro) }
+# ---- Pick a WSL distro --------------------------------------------------
+# Parse `wsl --list --quiet` (strips NUL bytes that WSL emits on older builds).
+$rawList = & $wsl.Path --list --quiet 2>$null
+$distros = ($rawList | ForEach-Object { $_ -replace '[\x00]','' } | Where-Object { $_.Trim() -ne '' } | Sort-Object)
+
+if ($distros.Count -eq 0) {
+  throw "No WSL distros found. Install one with: wsl --install -d Ubuntu"
+}
+
+if (-not $Distro) {
+  Write-Host ""
+  Write-Host "Available WSL distros:"
+  for ($i = 0; $i -lt $distros.Count; $i++) {
+    Write-Host ("  [{0}] {1}" -f ($i + 1), $distros[$i])
+  }
+  Write-Host ""
+  do {
+    $choice = Read-Host ("Select distro [1-{0}]" -f $distros.Count)
+  } while (-not ($choice -match '^\d+$') -or [int]$choice -lt 1 -or [int]$choice -gt $distros.Count)
+  $Distro = $distros[[int]$choice - 1]
+  Write-Host ("Using: {0}`n" -f $Distro)
+}
+
+$distroArg = @('-d', $Distro)
 
 # Translate the Windows path to a WSL path (/mnt/c/...)
-$WslHere = (& $wsl.Path @distroArg -- wslpath -a "$Here").Trim()
+$safeHere = $Here -replace '\\','\\\\'
+$WslHereRaw = & $wsl.Path @distroArg -- wslpath -a -- $safeHere 2>&1
+$WslHere = ($WslHereRaw -join "`n").Trim()
 if ($LASTEXITCODE -ne 0 -or -not $WslHere) {
-  throw "wslpath failed for '$Here'. Is WSL healthy? Try 'wsl --status'."
+  throw "wslpath failed for '$Here'. Is WSL healthy? Try 'wsl --status'. Output: $WslHereRaw"
 }
 
 # ---- Prereq: build tools inside WSL -------------------------------------
-# Check only -- don't install. If anything is missing, tell the user how.
-$precheck = @'
-set -e
-missing=""
-for t in debootstrap parted mkfs.vfat mkfs.ext4 losetup chroot openssl; do
-  command -v "$t" >/dev/null 2>&1 || missing="$missing $t"
-done
-if [ -n "$missing" ]; then
-  echo "error: missing tools inside WSL:$missing" >&2
-  echo "install once with:" >&2
-  echo "  sudo apt install -y debootstrap parted dosfstools openssl" >&2
-  exit 2
-fi
-'@
-
-& $wsl.Path @distroArg -- bash -lc $precheck
-if ($LASTEXITCODE -ne 0) { throw "WSL prerequisite check failed -- see message above." }
+# Auto-install any missing tools, then verify. Runs as the WSL user but
+# calls sudo for the install, so the user must have passwordless sudo or
+# will be prompted once.
+$precheckLines = @(
+  'set -e'
+  'missing=""'
+  'for t in debootstrap parted mkfs.vfat mkfs.ext4 losetup chroot openssl; do'
+  '  command -v "$t" >/dev/null 2>&1 || missing="$missing $t"'
+  'done'
+  'if [ -n "$missing" ]; then'
+  '  echo "WSL: installing missing tools:$missing"'
+  '  sudo apt-get update -qq'
+  '  sudo apt-get install -y debootstrap parted dosfstools e2fsprogs openssl'
+  'fi'
+)
+$tmpWin = [System.IO.Path]::GetTempFileName() + '.sh'
+[System.IO.File]::WriteAllText($tmpWin, ($precheckLines -join "`n") + "`n", [System.Text.Encoding]::ASCII)
+$tmpWsl = (& $wsl.Path @distroArg -- wslpath -a ($tmpWin -replace '\\','/')).Trim()
+& $wsl.Path @distroArg -- bash "$tmpWsl"
+$precheckExit = $LASTEXITCODE
+Remove-Item $tmpWin -ErrorAction SilentlyContinue
+if ($precheckExit -ne 0) { throw "WSL prerequisite install failed -- see message above." }
 
 # Hand the password to WSL via WSLENV so we don't interpolate it into a shell
 # string (avoids quoting headaches for passwords with special chars).
 $env:PASSWORD = $Password
 $env:WSLENV   = (@($env:WSLENV, 'PASSWORD') | Where-Object { $_ }) -join ':'
+
+# Strip Windows CR from build.sh, config scripts, and packages.list (safe to repeat).
+& $wsl.Path @distroArg -- bash -c "sed -i 's/\r//' '$WslHere/build.sh' '$WslHere/config/firstboot.sh' '$WslHere/config/packages.list'"
 
 & $wsl.Path @distroArg -- bash -lc "cd '$WslHere' && sudo -E ./build.sh"
 if ($LASTEXITCODE -ne 0) { throw "build.sh failed inside WSL." }

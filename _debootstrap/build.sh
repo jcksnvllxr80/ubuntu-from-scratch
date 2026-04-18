@@ -44,7 +44,11 @@ mkdir -p "$OUT"
 rm -f "$IMG"
 
 # ---- Parse the packages list --------------------------------------------
-PACKAGES="$(grep -vE '^\s*(#|$)' "$CFG/packages.list" | paste -sd, -)"
+# Space-separated so we can pass directly to apt-get inside the chroot.
+# Packages with complex postinst scripts (grub-efi-amd64, shim-signed,
+# linux-generic) fail during debootstrap's second stage before /proc /sys
+# /dev are available, so ALL packages are installed inside the chroot.
+PACKAGES="$(grep -vE '^\s*(#|$)' "$CFG/packages.list" | paste -sd' ' -)"
 if [[ -z "$PACKAGES" ]]; then
   echo "error: no packages in $CFG/packages.list" >&2
   exit 1
@@ -77,7 +81,9 @@ mkdir -p "$MNT/boot/efi"
 mount "${LOOP}p1" "$MNT/boot/efi"
 
 # ---- Bootstrap a minimal rootfs -----------------------------------------
-debootstrap --arch="$ARCH" --variant=minbase --include="$PACKAGES" \
+# No --include: packages with complex postinst (grub, shim, kernel) are
+# installed inside the chroot below, after /proc /sys /dev are mounted.
+debootstrap --arch="$ARCH" --variant=minbase \
   "$SUITE" "$MNT" "$MIRROR"
 
 # ---- Bind pseudo-fs so the chroot can build initramfs + install grub ----
@@ -131,6 +137,10 @@ chmod 600 "$MNT/tmp/.pw"
 # ---- Finish inside the chroot ------------------------------------------
 chroot "$MNT" /bin/bash -eux <<CHROOT
 export DEBIAN_FRONTEND=noninteractive
+
+# ---- Install all target packages now that /proc /sys /dev are ready -----
+apt-get update
+apt-get install -y --no-install-recommends $PACKAGES
 
 # user + sudo (password applied via chpasswd -e, which accepts pre-hashed)
 useradd -m -s /bin/bash -G sudo "$USERNAME"
