@@ -11,5 +11,8 @@ build/
 Thumbs.db
 *.swp
 
+# IDE
+.vscode
+
 # LLM data
 .claude
