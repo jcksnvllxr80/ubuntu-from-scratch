@@ -166,6 +166,25 @@ grub-install --target=x86_64-efi --efi-directory=/boot/efi \
 update-grub
 CHROOT
 
+# ---- Build standalone GRUB EFI binary with embedded search config ------
+# grub-install embedded device hints from the build environment (loop devices)
+# that don't exist in the VM. Replace its EFI binary with a standalone one
+# that searches by filesystem label at boot time — works on any hardware.
+cat > "$MNT/tmp/grub-embed.cfg" <<'EMBEDCFG'
+search.fs_label root root
+set prefix=($root)/boot/grub
+configfile $prefix/grub.cfg
+EMBEDCFG
+
+chroot "$MNT" grub-mkstandalone \
+  --format=x86_64-efi \
+  --output=/boot/efi/EFI/BOOT/BOOTX64.EFI \
+  --locales="" \
+  --fonts="" \
+  "boot/grub/grub.cfg=/tmp/grub-embed.cfg"
+
+rm -f "$MNT/tmp/grub-embed.cfg"
+
 # ---- Unmount cleanly ---------------------------------------------------
 umount -R "$MNT"
 losetup -d "$LOOP"
