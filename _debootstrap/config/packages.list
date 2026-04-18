@@ -6,6 +6,9 @@
 
 # ---- required to actually boot and administer the image ----
 linux-generic
+# initramfs-tools is only a Recommends of linux-image-*, so --no-install-recommends
+# silently drops it — which leaves /boot without an initrd and makes the image unbootable.
+initramfs-tools
 grub-efi-amd64
 grub-efi-amd64-signed
 shim-signed
