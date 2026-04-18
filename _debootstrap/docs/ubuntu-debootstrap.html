@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ubuntu debootstrap — From-Archive Build Guide</title>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0e13; --surface: #111720; --surface2: #19222e; --border: #1f2d3d;
+    --accent: #3ecf8e; --accent2: #4a9eff; --accent3: #e8624a;
+    --text: #c9d5e0; --text-dim: #5a7a94; --text-bright: #eaf2f8;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body { background:var(--bg); color:var(--text); font-family:'JetBrains Mono',monospace; font-size:13px; line-height:1.7; }
+  a { color:var(--accent2); text-decoration:none; }
+  a:hover { text-decoration:underline; }
+  code { font-family:'JetBrains Mono',monospace; color:var(--accent3); background:var(--surface2); padding:1px 6px; border-radius:3px; font-size:12px; }
+
+  .wrap { max-width:920px; margin:0 auto; padding:48px 40px 80px; }
+  .topbar { display:flex; align-items:center; gap:12px; font-size:11px; color:var(--text-dim); padding-bottom:24px; border-bottom:1px solid var(--border); margin-bottom:40px; }
+  .topbar .crumb-active { color:var(--text-bright); }
+  .topbar .sep { color:var(--border); }
+  .topbar .spacer { flex:1; }
+  .tag { display:inline-flex; align-items:center; font-size:10px; padding:3px 8px; border-radius:4px; border:1px solid; }
+  .tag-accent { border-color:rgba(62,207,142,0.4); color:var(--accent); background:rgba(62,207,142,0.08); }
+  .tag-blue   { border-color:rgba(74,158,255,0.4); color:var(--accent2); background:rgba(74,158,255,0.08); }
+
+  .hero { margin-bottom:48px; }
+  .hero-eyebrow { font-size:10px; letter-spacing:3px; text-transform:uppercase; color:var(--accent); margin-bottom:12px; display:flex; align-items:center; gap:8px; }
+  .hero-eyebrow::after { content:''; flex:1; max-width:60px; height:1px; background:var(--accent); opacity:0.4; }
+  .hero h1 { font-family:'Syne',sans-serif; font-size:36px; font-weight:800; color:var(--text-bright); line-height:1.1; letter-spacing:-1px; margin-bottom:14px; }
+  .hero h1 span { color:var(--accent); }
+  .hero-desc { font-size:13px; color:var(--text-dim); max-width:640px; line-height:1.8; }
+
+  h2 { font-family:'Syne',sans-serif; font-weight:700; font-size:20px; color:var(--text-bright); margin:40px 0 8px; padding-top:16px; border-top:1px solid var(--border); }
+  h2:first-of-type { border-top:none; padding-top:0; }
+  h3 { font-family:'Syne',sans-serif; font-weight:700; font-size:15px; color:var(--text-bright); margin:28px 0 8px; }
+  p { margin:10px 0; color:var(--text); }
+
+  .pipeline { display:grid; grid-template-columns:repeat(4,1fr); gap:2px; margin:24px 0; }
+  .pipeline-step { background:var(--surface); border:1px solid var(--border); padding:16px; position:relative; }
+  .pipeline-step::after { content:'→'; position:absolute; right:-12px; top:50%; transform:translateY(-50%); color:var(--border); font-size:14px; z-index:1; }
+  .pipeline-step:last-child::after { display:none; }
+  .ps-num { font-size:9px; color:var(--text-dim); letter-spacing:1px; margin-bottom:6px; }
+  .ps-title { font-family:'Syne',sans-serif; font-weight:700; font-size:13px; color:var(--text-bright); margin-bottom:4px; }
+  .ps-sub { font-size:10px; color:var(--text-dim); line-height:1.5; }
+
+  .card-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:16px; margin:20px 0; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:18px; }
+  .card-title { font-family:'Syne',sans-serif; font-weight:700; font-size:13px; color:var(--text-bright); margin-bottom:6px; }
+  .card-desc { font-size:11px; color:var(--text-dim); line-height:1.7; }
+
+  .code-block { background:#080c10; border:1px solid var(--border); border-radius:8px; overflow:hidden; margin:14px 0; }
+  .code-header { display:flex; align-items:center; padding:8px 14px; border-bottom:1px solid var(--border); background:var(--surface); gap:8px; }
+  .code-dots { display:flex; gap:5px; }
+  .code-dot { width:8px; height:8px; border-radius:50%; }
+  .code-dot:nth-child(1){background:#ff5f57} .code-dot:nth-child(2){background:#febc2e} .code-dot:nth-child(3){background:#28c840}
+  .code-filename { font-size:11px; color:var(--text-dim); margin-left:4px; }
+  .code-body { padding:16px; overflow-x:auto; }
+  .code-body pre { font-family:'JetBrains Mono',monospace; font-size:12px; line-height:1.75; color:var(--text); white-space:pre; }
+  .kw{color:#e06c75} .cm{color:#4a6274;font-style:italic} .str{color:#98c379} .num{color:#d19a66} .flag{color:var(--accent)}
+
+  .data-table { width:100%; border-collapse:collapse; margin:16px 0; }
+  .data-table th { text-align:left; font-size:10px; letter-spacing:1.5px; text-transform:uppercase; color:var(--text-dim); padding:8px 14px; border-bottom:1px solid var(--border); }
+  .data-table td { padding:10px 14px; border-bottom:1px solid rgba(31,45,61,0.5); font-size:12px; vertical-align:top; }
+  .data-table tr:hover td { background:var(--surface2); }
+  .col-name { color:var(--text-bright); font-weight:500; }
+  .col-dim  { color:var(--text-dim); }
+
+  .callout { border-left:3px solid; padding:12px 16px; border-radius:0 6px 6px 0; margin:14px 0; font-size:12px; line-height:1.7; }
+  .callout-warn { border-color:#febc2e; background:rgba(254,188,46,0.06); color:#c9a730; }
+  .callout-info { border-color:var(--accent2); background:rgba(74,158,255,0.06); color:#7ab8f5; }
+  .callout-ok   { border-color:var(--accent);  background:rgba(62,207,142,0.06); color:#5dd4a0; }
+  .callout strong { display:block; margin-bottom:3px; font-size:11px; letter-spacing:0.5px; }
+
+  ul { margin:10px 0 10px 22px; color:var(--text); }
+  li { margin:4px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="topbar">
+  <span>Ubuntu from Scratch</span><span class="sep">/</span>
+  <span class="crumb-active">debootstrap</span>
+  <span class="spacer"></span>
+  <span class="tag tag-accent">Ubuntu 26.04</span>
+  <span class="tag tag-blue">debootstrap</span>
+  <span class="tag tag-blue">EFI</span>
+</div>
+
+<div class="hero">
+  <div class="hero-eyebrow">From-Archive Build</div>
+  <h1>Skip the installer.<br><span>Build the rootfs.</span></h1>
+  <p class="hero-desc">
+    Build an <strong>Ubuntu 26.04 LTS</strong> (Resolute Raccoon) server image
+    straight from the archive. debootstrap pulls base packages, unpacks them
+    into a directory, and a chroot finishes the system. No ISO download, no
+    Subiquity, no "Continue with autoinstall?" prompt — just a bootable raw
+    disk image produced in one script. The tradeoff: you own partitioning,
+    bootloader install, and machine-id hygiene. This guide covers all of it.
+  </p>
+</div>
+
+<h2>Pipeline</h2>
+
+<div class="pipeline">
+  <div class="pipeline-step">
+    <div class="ps-num">01 — BUILD</div>
+    <div class="ps-title">debootstrap</div>
+    <div class="ps-sub">Partition a raw image. Bootstrap a rootfs. Run chroot steps. Install GRUB.</div>
+  </div>
+  <div class="pipeline-step">
+    <div class="ps-num">02 — SYSPREP</div>
+    <div class="ps-title">Reset state</div>
+    <div class="ps-sub">Wipe SSH host keys, machine-id, logs. firstboot regenerates them per-clone.</div>
+  </div>
+  <div class="pipeline-step">
+    <div class="ps-num">03 — STORE</div>
+    <div class="ps-title">Compress</div>
+    <div class="ps-sub">virt-sparsify → xz. Publish with a sha256. One artifact for all targets.</div>
+  </div>
+  <div class="pipeline-step">
+    <div class="ps-num">04 — DEPLOY</div>
+    <div class="ps-title">dd / iPXE</div>
+    <div class="ps-sub">Stream the compressed image to target disk. firstboot individualizes it on boot.</div>
+  </div>
+</div>
+
+<h2>Why debootstrap</h2>
+<p>The autoinstall path rides on Canonical's installer: you boot the live-server ISO, Subiquity/curtin read your <code>user-data</code>, and carve up the disk. Simple, but it downloads a ~2 GB ISO you mostly discard and spends 10–20 minutes of Subiquity time every rebuild.</p>
+<p>debootstrap walks around the installer entirely — base packages come straight from the archive, unpacked directly. Rebuilds drop to ~3–5 minutes from clean.</p>
+
+<div class="callout callout-warn">
+  <strong>TRADE-OFF</strong>
+  You own partitioning, bootloader install, initramfs generation, user creation, network config, and machine-id hygiene. Subiquity normally does these for free. <code>build.sh</code> bundles them into one script.
+</div>
+
+<h2>Prerequisites</h2>
+
+<table class="data-table">
+  <tr><th>Need</th><th>Why</th></tr>
+  <tr><td class="col-name">Linux host (or WSL)</td><td class="col-dim">debootstrap, losetup, chroot are Linux-only</td></tr>
+  <tr><td class="col-name">root</td><td class="col-dim">loop-mount and chroot need it</td></tr>
+  <tr><td class="col-name">debootstrap</td><td class="col-dim">fetches + unpacks base packages</td></tr>
+  <tr><td class="col-name">parted</td><td class="col-dim">partitions the raw image</td></tr>
+  <tr><td class="col-name">dosfstools</td><td class="col-dim">mkfs.vfat for the EFI System Partition</td></tr>
+  <tr><td class="col-name">VirtualBox</td><td class="col-dim">only needed for the run-vm scripts</td></tr>
+</table>
+
+<div class="code-block">
+  <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><div class="code-filename">bash</div></div>
+  <div class="code-body"><pre><span class="cm"># Ubuntu / WSL</span>
+sudo apt install -y debootstrap parted dosfstools</pre></div>
+</div>
+
+<h2>What build.sh does</h2>
+
+<h3>1. Sparse raw image + GPT partition table</h3>
+<div class="code-block">
+  <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><div class="code-filename">build.sh</div></div>
+  <div class="code-body"><pre>truncate -s 8G build/ubuntu.img
+parted -s build/ubuntu.img mklabel gpt \
+  mkpart ESP  fat32 1MiB 513MiB  <span class="flag">set 1 esp on</span> \
+  mkpart root ext4  513MiB 100%</pre></div>
+</div>
+<p>Sparse = on-disk size stays tiny until blocks are written. 8 GiB is plenty for a minimal server. 512 MiB ESP is oversized for one bootloader, but leaves room for a second kernel or alternative loader.</p>
+
+<h3>2. Loop-mount, format, mount</h3>
+<div class="code-block">
+  <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><div class="code-filename">build.sh</div></div>
+  <div class="code-body"><pre>LOOP=$(losetup --find --show --partscan build/ubuntu.img)
+mkfs.vfat -F32 -n ESP  "${LOOP}p1"
+mkfs.ext4 -L root      "${LOOP}p2"
+mount "${LOOP}p2" /mnt/ufs
+mount "${LOOP}p1" /mnt/ufs/boot/efi</pre></div>
+</div>
+<p>Labels matter — <code>fstab</code> references them, so the image boots regardless of the device name the target firmware assigns (<code>/dev/sda2</code>, <code>/dev/nvme0n1p2</code>, etc.).</p>
+
+<h3>3. Bootstrap</h3>
+<div class="code-block">
+  <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><div class="code-filename">build.sh</div></div>
+  <div class="code-body"><pre>debootstrap --variant=minbase \
+  --include=linux-generic,grub-efi-amd64,shim-signed,openssh-server,... \
+  resolute /mnt/ufs http://archive.ubuntu.com/ubuntu</pre></div>
+</div>
+<p><code>--variant=minbase</code> yields a ~150 MB rootfs (no <em>Priority: important</em> packages). <code>--include=</code> adds the kernel, bootloader, and everything from <code>config/packages.list</code> in one pass.</p>
+
+<h3>4. Bind pseudo-filesystems</h3>
+<div class="code-block">
+  <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><div class="code-filename">build.sh</div></div>
+  <div class="code-body"><pre>for d in dev dev/pts proc sys run; do
+  mount --rbind /$d /mnt/ufs/$d
+  mount --make-rslave /mnt/ufs/$d
+done</pre></div>
+</div>
+<p>Without these, kernel postinst scripts can't build initramfs, <code>grub-install</code> can't probe the ESP, and systemd presets don't apply. <code>--make-rslave</code> stops unmount propagation from nuking the host's mounts on teardown.</p>
+
+<h3>5. Config files</h3>
+<ul>
+  <li><code>/etc/hostname</code>, <code>/etc/hosts</code>, <code>/etc/fstab</code> (LABEL=root, LABEL=ESP)</li>
+  <li><code>/etc/netplan/01-netcfg.yaml</code> from <code>config/netplan.yaml</code></li>
+  <li><code>/etc/apt/sources.list</code> — main + updates + security</li>
+  <li><code>/usr/local/sbin/firstboot.sh</code> + <code>/etc/systemd/system/firstboot.service</code></li>
+  <li>Empty <code>/etc/machine-id</code> so it regenerates on first boot</li>
+</ul>
+
+<h3>6. Finish inside the chroot</h3>
+<div class="code-block">
+  <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><div class="code-filename">build.sh</div></div>
+  <div class="code-body"><pre>chroot /mnt/ufs /bin/bash &lt;&lt;'CHROOT'
+useradd -m -s /bin/bash -G sudo ubuntu
+echo ubuntu:ubuntu | chpasswd
+passwd -l root
+systemctl enable ssh systemd-networkd firstboot.service
+apt-get purge -y snapd ubuntu-advantage-tools
+grub-install --target=x86_64-efi --efi-directory=/boot/efi \
+  --bootloader-id=ubuntu <span class="flag">--removable</span> --no-nvram
+update-grub
+CHROOT</pre></div>
+</div>
+
+<div class="callout callout-info">
+  <strong>WHY --removable</strong>
+  It writes <code>/EFI/BOOT/BOOTX64.EFI</code> — the path EFI firmware searches when no NVRAM entry exists. That's what makes the image portable: it boots on any EFI firmware without needing the firmware's boot order to be populated first.
+</div>
+
+<h2>config/ reference</h2>
+
+<table class="data-table">
+  <tr><th>File</th><th>Role</th><th>Autoinstall counterpart</th></tr>
+  <tr><td class="col-name">packages.list</td><td>apt set installed during debootstrap</td><td class="col-dim"><code>packages:</code> in user-data</td></tr>
+  <tr><td class="col-name">netplan.yaml</td><td>becomes /etc/netplan/01-netcfg.yaml</td><td class="col-dim"><code>network:</code> in user-data</td></tr>
+  <tr><td class="col-name">firstboot.sh</td><td>runs once on first boot, disables itself</td><td class="col-dim">inline <code>write_files</code></td></tr>
+  <tr><td class="col-name">firstboot.service</td><td>systemd unit for firstboot.sh</td><td class="col-dim">inline <code>write_files</code></td></tr>
+</table>
+
+<h2>First boot</h2>
+<p><code>firstboot.service</code> is <code>Type=oneshot</code> with <code>ConditionPathExists=!/etc/firstboot-complete</code>. On the first real boot it:</p>
+<ul>
+  <li>Regenerates <code>/etc/machine-id</code> (debootstrap left it empty)</li>
+  <li>Regenerates SSH host keys (unique fingerprint per clone)</li>
+  <li>Drops <code>/etc/firstboot-complete</code> as proof</li>
+  <li>Disables itself</li>
+</ul>
+
+<div class="callout callout-ok">
+  <strong>WHY IT MATTERS</strong>
+  If you <code>dd</code> one image to 100 servers, each must end up with its own SSH host keys and machine-id. Skipping this step = 100 hosts sharing an identity.
+</div>
+
+<h2>Sysprep before you clone</h2>
+<p>Before snapshotting the running VM for distribution:</p>
+<div class="code-block">
+  <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><div class="code-filename">inside the VM</div></div>
+  <div class="code-body"><pre>sudo rm -f /etc/ssh/ssh_host_*
+sudo rm -rf /var/log/journal/*
+sudo truncate -s 0 /etc/machine-id
+sudo rm -rf /tmp/* /var/tmp/*
+sudo apt-get clean
+sudo shutdown -h now        <span class="cm"># halt, do NOT reboot</span></pre></div>
+</div>
+
+<h2>Compress &amp; store</h2>
+<div class="code-block">
+  <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><div class="code-filename">host</div></div>
+  <div class="code-body"><pre>sudo virt-sparsify --compress build/ubuntu.img build/ubuntu.sparse.img
+xz -T0 -9 build/ubuntu.sparse.img
+sha256sum build/ubuntu.sparse.img.xz &gt; build/ubuntu.sparse.img.xz.sha256</pre></div>
+</div>
+<p>An 8 GiB raw with ~1.5 GiB used typically lands at 300–500 MB compressed. Publish that + its sha256.</p>
+
+<h2>Deploy to bare metal</h2>
+<div class="code-block">
+  <div class="code-header"><div class="code-dots"><div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div></div><div class="code-filename">host</div></div>
+  <div class="code-body"><pre>xzcat ubuntu.sparse.img.xz | ssh root@target \
+  'dd of=/dev/nvme0n1 bs=8M status=progress'</pre></div>
+</div>
+<p>Or serve the image over HTTPS and boot the target via iPXE into a rescue shell that <code>wget</code>s + pipes into <code>dd</code>. Either way, <code>firstboot.service</code> takes over on first boot.</p>
+
+<h2>Troubleshooting</h2>
+
+<table class="data-table">
+  <tr><th>Symptom</th><th>Fix</th></tr>
+  <tr><td class="col-name">Invalid Release signature</td><td class="col-dim">host clock skew — <code>sudo timedatectl set-ntp true</code></td></tr>
+  <tr><td class="col-name">grub-install: failed to get canonical path</td><td class="col-dim">bind mounts missing — re-run the <code>mount --rbind</code> loop with <code>--make-rslave</code></td></tr>
+  <tr><td class="col-name">VM boots to EFI shell, not GRUB</td><td class="col-dim">confirm <code>/EFI/BOOT/BOOTX64.EFI</code> exists in the ESP; <code>--removable</code> on grub-install writes it</td></tr>
+  <tr><td class="col-name">firstboot didn't disable itself</td><td class="col-dim"><code>journalctl -u firstboot.service</code>, fix, delete /etc/firstboot-complete, re-run</td></tr>
+  <tr><td class="col-name">netplan brings up nothing</td><td class="col-dim">interface isn't <code>en*</code> on this hypervisor — edit the match rule, rebuild</td></tr>
+  <tr><td class="col-name">Doesn't boot after <code>dd</code> to real disk</td><td class="col-dim">target has Secure Boot — keep <code>shim-signed</code>, or disable Secure Boot</td></tr>
+</table>
+
+<p style="margin-top:40px;color:var(--text-dim);font-size:11px;">
+  See also the <a href="../../README.md">parent README</a> for a comparison with the autoinstall approach, or <a href="ubuntu-debootstrap.md">ubuntu-debootstrap.md</a> for the same content in markdown.
+</p>
+
+</div>
+</body>
+</html>

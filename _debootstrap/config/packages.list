@@ -1,0 +1,32 @@
+# Packages installed into the rootfs during debootstrap + chroot.
+# One package per line. Blank lines and '#' comments are ignored.
+#
+# This file is the debootstrap counterpart of the `packages:` list in
+# _autoinstall/autoinstall/user-data.
+
+# ---- required to actually boot and administer the image ----
+linux-generic
+grub-efi-amd64
+shim-signed
+systemd-sysv
+netplan.io
+sudo
+openssh-server
+ca-certificates
+
+# ---- parity with the autoinstall default set ----
+curl
+wget
+htop
+vim
+
+# =================================================================
+# DESKTOP PACKAGES — uncomment to add a GUI
+# =================================================================
+# ubuntu-desktop-minimal    # minimal GNOME desktop
+# firefox                   # web browser
+# xorg                      # X server (included by ubuntu-desktop*)
+# gdm3                      # display manager (login screen)
+# =================================================================
+# END DESKTOP PACKAGES
+# =================================================================

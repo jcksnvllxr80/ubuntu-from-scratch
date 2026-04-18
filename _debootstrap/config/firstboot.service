@@ -1,0 +1,15 @@
+[Unit]
+Description=First boot provisioning
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/usr/local/sbin/firstboot.sh
+ConditionPathExists=!/etc/firstboot-complete
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/firstboot.sh
+RemainAfterExit=yes
+StandardOutput=journal+console
+
+[Install]
+WantedBy=multi-user.target

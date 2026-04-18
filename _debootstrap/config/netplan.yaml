@@ -1,0 +1,9 @@
+# DHCP on whatever ethernet VirtualBox presents.
+# Counterpart to the `network:` block in the autoinstall user-data.
+network:
+  version: 2
+  ethernets:
+    any:
+      match:
+        name: "en*"
+      dhcp4: true
