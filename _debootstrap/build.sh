@@ -7,7 +7,7 @@
 # and lays down a working rootfs in one pass.
 #
 # Requires: Linux host (NOT macOS, NOT native Windows). Root.
-#   sudo apt install debootstrap parted dosfstools
+#   sudo apt install debootstrap parted dosfstools e2fsprogs
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -35,7 +35,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 for tool in debootstrap parted mkfs.vfat mkfs.ext4 losetup chroot openssl; do
   command -v "$tool" >/dev/null 2>&1 || {
-    echo "error: missing '$tool'. On Ubuntu: apt install debootstrap parted dosfstools openssl" >&2
+    echo "error: missing '$tool'. On Ubuntu: apt install debootstrap parted dosfstools e2fsprogs openssl" >&2
     exit 1
   }
 done
@@ -55,6 +55,8 @@ if [[ -z "$PACKAGES" ]]; then
 fi
 
 # ---- Create the sparse raw image and partition it -----------------------
+# GPT + ESP + ext4 root. This matches how real modern hardware expects to
+# boot under UEFI (and supports Secure Boot via the signed shim chain).
 truncate -s "${SIZE_MB}M" "$IMG"
 parted -s "$IMG" \
   mklabel gpt \
@@ -142,6 +144,14 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends $PACKAGES
 
+# Sanity check: the kernel must actually have landed, otherwise update-grub
+# generates an empty menu and we'd boot into a grub> prompt.
+ls /boot/vmlinuz-* /boot/initrd.img-*
+# And the Canonical-signed GRUB binary must be present, otherwise grub-install
+# falls back to building grubx64.efi on the fly — which bakes our loop-device
+# path into the EFI prefix and makes the image non-bootable outside WSL.
+ls /usr/lib/grub/x86_64-efi-signed/grubx64.efi.signed
+
 # user + sudo (password applied via chpasswd -e, which accepts pre-hashed)
 useradd -m -s /bin/bash -G sudo "$USERNAME"
 chpasswd -e < /tmp/.pw
@@ -159,31 +169,34 @@ apt-get purge -y snapd ubuntu-advantage-tools 2>/dev/null || true
 apt-get autoremove -y
 apt-get clean
 
-# bootloader on the ESP. --removable writes /EFI/BOOT/BOOTX64.EFI so it
-# boots on any EFI firmware without needing NVRAM entries (important for VMs).
+# EFI install. NO --removable: that flag makes grub-install regenerate
+# grubx64.efi on the fly via grub-mkimage and bake in a device-specific
+# prefix (our loop device). Plain install with shim-signed + grub-efi-
+# amd64-signed present places the Canonical-signed shim + grub at
+# /EFI/ubuntu/, using the portable prefix /EFI/ubuntu that the signed
+# grubx64.efi was built with — resolved against whatever ESP it boots from.
 grub-install --target=x86_64-efi --efi-directory=/boot/efi \
-  --bootloader-id=ubuntu --removable --no-nvram
+  --bootloader-id=ubuntu --no-nvram
 update-grub
+
+# Duplicate the signed shim + grub to /EFI/BOOT/ so firmware without NVRAM
+# entries (fresh VMs, USB sticks, cleanly-flashed machines) still boots.
+# The signed grubx64.efi has an embedded prefix of /EFI/ubuntu, so it finds
+# its config regardless of which path the firmware loaded it from.
+mkdir -p /boot/efi/EFI/BOOT
+cp /boot/efi/EFI/ubuntu/shimx64.efi /boot/efi/EFI/BOOT/BOOTX64.EFI
+cp /boot/efi/EFI/ubuntu/grubx64.efi /boot/efi/EFI/BOOT/grubx64.efi
+[ -f /boot/efi/EFI/ubuntu/mmx64.efi ] && \
+  cp /boot/efi/EFI/ubuntu/mmx64.efi /boot/efi/EFI/BOOT/mmx64.efi
+
+echo "=== ESP layout ==="
+find /boot/efi -type f -printf '%p  %s bytes\n'
+echo "=== /EFI/ubuntu/grub.cfg (the UUID-search stub) ==="
+cat /boot/efi/EFI/ubuntu/grub.cfg
+echo "=== /boot/grub/grub.cfg (first 60 lines) ==="
+head -60 /boot/grub/grub.cfg
+echo "=================================================="
 CHROOT
-
-# ---- Build standalone GRUB EFI binary with embedded search config ------
-# grub-install embedded device hints from the build environment (loop devices)
-# that don't exist in the VM. Replace its EFI binary with a standalone one
-# that searches by filesystem label at boot time — works on any hardware.
-cat > "$MNT/tmp/grub-embed.cfg" <<'EMBEDCFG'
-search.fs_label root root
-set prefix=($root)/boot/grub
-configfile $prefix/grub.cfg
-EMBEDCFG
-
-chroot "$MNT" grub-mkstandalone \
-  --format=x86_64-efi \
-  --output=/boot/efi/EFI/BOOT/BOOTX64.EFI \
-  --locales="" \
-  --fonts="" \
-  "boot/grub/grub.cfg=/tmp/grub-embed.cfg"
-
-rm -f "$MNT/tmp/grub-embed.cfg"
 
 # ---- Unmount cleanly ---------------------------------------------------
 umount -R "$MNT"

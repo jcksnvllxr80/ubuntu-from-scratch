@@ -3,7 +3,7 @@
 #
 # Counterpart to _autoinstall/run-vm.sh. Differences:
 #   - no Ubuntu ISO is attached (the image is already bootable)
-#   - VM firmware is EFI (grub-install --removable lives on the ESP)
+#   - VM firmware is EFI (shim + signed grub on the ESP)
 #   - the raw image is converted to VDI on the way in
 set -euo pipefail
 
